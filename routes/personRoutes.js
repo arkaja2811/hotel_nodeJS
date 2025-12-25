@@ -1,15 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const Person = require('../models/person')
+const {jwtAuthMiddleware, generateToken} = require('../jwt')
 
 //post method for person endpoint
-router.post('/', async (req, res) => {
+router.post('/signup', async (req, res) => {
   try {
     const data = req.body;
     const newPerson = new Person(data);
     const response = await newPerson.save();
     console.log('Person added successfully:')
-    res.status(200).json(response);
+    const payload = {
+      id: response.id,
+      username: response.username
+    }
+    const token = generateToken(payload);
+    console.log('Generated Token:', token);
+    res.status(200).json({response: response, token: token});
   }
   catch(err){
     console.log('Error adding person:', err);
@@ -17,8 +24,46 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.post('/login', async(req, res)=>{
+  try{
+    const {username, password} = req.body;
+    const user = await Person.findOne({username: username});
+    if(!user || await !user.comparePassword(password))
+    {
+      return res.status(401).json({error: 'Invalid Username or password'})
+    }
+    //generate token
+    const payload = {
+      id: user.id,
+      username: user.username
+    }
+    const token = generateToken(payload);
+    return res.json({token})
+  }
+  catch(err){
+    console.log(err)
+    res.status(500).json({error: 'Internal Server Error'});
+  }
+})
+
+router.get('/profile', jwtAuthMiddleware, async(req, res) => {
+  try{
+    const userData = req.userPayload;
+    console.log("User Data: ", userData);
+
+    const userId = userData.id;
+    const user = await Person.findById(userId);
+
+    res.status(200).json({user});
+  }
+  catch(err){
+    console.error(err)
+    res.status(500).json({error: 'Internal Server Error'})
+  }
+})
+
 // get method for person endpoint 
-router.get('/', async (req, res) => {
+router.get('/', jwtAuthMiddleware, async (req, res) => {
   try{
     const data = await Person.find();
     console.log("Persons retrieved successfully");
